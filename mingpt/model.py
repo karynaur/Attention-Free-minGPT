@@ -34,45 +34,6 @@ class GPT1Config(GPTConfig):
     n_head = 12
     n_embd = 768
 
-#class AFTFullAttention(nn.Module):
-#    def __init__(self, dim, hidden_dim, heads):
-#        super().__init__()
-#        '''
-#        dim: the embedding dimension of the tokens
-#        hidden_dim: the hidden dimension used inside AFT Full
-#        heads: the number of AFT-Full heads
-#        '''
-       
-#        self.dim = dim
-#        self.hidden_dim = hidden_dim
-#        self.heads = heads
-#        self.to_q = nn.Linear(dim, hidden_dim * heads)
-#        self.to_k = nn.Linear(dim, hidden_dim * heads)
-#        self.to_v = nn.Linear(dim, hidden_dim * heads)
-#        
-#        self.to_out = nn.Linear(heads * hidden_dim, dim) if dim != hidden_dim else nn.Identity()
-#
-#    def forward(self, x):
-#        B, T, _ = x.shape
-#        Q = self.to_q(x).view(B, self.heads, T, self.hidden_dim)
-#        K = self.to_k(x).view(B, self.heads, T, self.hidden_dim)
-#        V = self.to_v(x).view(B, self.heads, T, self.hidden_dim)
-
-#        '''
-#        From the paper
-#        '''
-#        wbias = nn.Parameter(torch.rand(self.heads, T, 1)) # learnable pair-wise position bias
-#        numer = torch.exp(K + wbias)
-#        denom = numer.sum(0)
-#
-#        Q_sig = torch.sigmoid(Q)
-#        weighted = torch.mul(numer, V).sum(0) / denom
-#        Yt = torch.mul(Q_sig, weighted)
-#        Yt = Yt.view(B, T, self.heads * self.hidden_dim)
-#        Yt = self.to_out(Yt)
-#
-#        return Yt
-
 
 
 class AFT(nn.Module):
@@ -173,7 +134,7 @@ class Block(nn.Module):
         super().__init__()
         self.ln1 = nn.LayerNorm(config.n_embd)
         self.ln2 = nn.LayerNorm(config.n_embd)
-        self.attn = CausalSelfAttention(config)
+        self.attn = AFT(config)  
         self.mlp = nn.Sequential(
             nn.Linear(config.n_embd, 4 * config.n_embd),
             nn.GELU(),
