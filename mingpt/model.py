@@ -34,8 +34,6 @@ class GPT1Config(GPTConfig):
     n_head = 12
     n_embd = 768
 
-
-
 class AFT(nn.Module):
     """
     A vanilla multi-head masked self-attention layer with a projection at the end.
@@ -47,41 +45,46 @@ class AFT(nn.Module):
         super().__init__()
         assert config.n_embd % config.n_head == 0
         # key, query, value projections for all heads
-        self.key = nn.Linear(config.n_embd, config.n_embd)
-        self.query = nn.Linear(config.n_embd, config.n_embd)
-        self.value = nn.Linear(config.n_embd, config.n_embd)
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.key = nn.Linear(config.n_embd, config.n_embd)#*config.n_head)
+        self.query = nn.Linear(config.n_embd, config.n_embd)#*config.n_head)
+        self.value = nn.Linear(config.n_embd, config.n_embd)#*config.n_head)
         # regularization
         self.attn_drop = nn.Dropout(config.attn_pdrop)
         self.resid_drop = nn.Dropout(config.resid_pdrop)
         # output projection
         self.proj = nn.Linear(config.n_embd, config.n_embd)
         # causal mask to ensure that attention is only applied to the left in the input sequence
-        self.register_buffer("mask", torch.tril(torch.ones(config.block_size, config.block_size))
-                                     .view(1, 1, config.block_size, config.block_size))
+        self.register_buffer("mask", torch.tril(torch.ones(config.n_embd, config.block_size))
+                                     .view(1, 1, config.n_embd, config.block_size))
         self.n_head = config.n_head
+        self.n_embd = config.n_embd
 
     def forward(self, x, layer_past=None):
         B, T, C = x.size()
-
+        print(x.shape)
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        k = self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        k = self.key(x).view(B, T, self.n_head,  C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         q = self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        v = self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        v = self.value(x).view(B, T, self.n_head,C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         
-        w_bias = nn.Parameter(torch.rand(self.n_heads, T, 1))
-        numer = torch.exp(k + w_bias)
-        denom = numer.sum(0)
+        w_bias = nn.Parameter(torch.rand(self.n_head, T, T)).to(self.device)
+        numer = torch.exp(w_bias).unsqueeze(0).matmul(torch.exp(k))
+
+        #numer = torch.exp(k + w_bias)
+        
         
         Q_sigmoid = torch.sigmoid(q)
-        weighted = torch.mul(number, v).sum(0) / denom
-        weighted = masked_fill(self.mask == 0, float('-inf'))
         
-        Y = torch.mul(Q_sigmoid, weighted).view(B, self.n_heads, T, T)
+        weighted = (torch.mul(numer, v).sum(0) / numer).reshape(B,self.n_head,T,-1)
         
+        #print(weighted.shape)
+        #weighted = weighted.masked_fill(self.mask[:,:,:C,:T] == 0, float('-inf'))
         
-        return slef.resid_drop(self.proj(Y))
-
-
+        Y = torch.mul(Q_sigmoid, weighted).contiguous().view(B, T, C)#.view(B, self.n_head, T, T)
+        
+        Y = self.resid_drop(self.proj(Y))
+        return Y
 
 class CausalSelfAttention(nn.Module):
     """
