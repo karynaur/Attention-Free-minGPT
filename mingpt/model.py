@@ -62,7 +62,6 @@ class AFT(nn.Module):
 
     def forward(self, x, layer_past=None):
         B, T, C = x.size()
-        print(x.shape)
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
         k = self.key(x).view(B, T, self.n_head,  C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         q = self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
